@@ -1,9 +1,19 @@
-# Train a VAE to reduce 1024 dimension vector to 512
-
+import logging
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
+from sentence_transformers import SentenceTransformer
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("./logs/training.log"),
+        logging.StreamHandler()
+    ]
+)
 
 # Define the VAE model
 class VariationalAutoencoder(nn.Module):
@@ -59,39 +69,85 @@ def vae_loss(recon_x, x, mu, logvar):
     kl_divergence = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
     return recon_loss + kl_divergence
 
-# Hyperparameters
-input_dim = 1024
-latent_dim = 512
-batch_size = 64
-learning_rate = 1e-3
-epochs = 20
+# Data preparation
+def prepare_data(input_dim, batch_size, filename):
+    try:
+        # Load the saved tensor (for testing or reuse)
+        logging.info(f"Loading embeddings from {filename}.")
+        embeddings = torch.load(filename)
 
-# Create synthetic data for demonstration
-torch.manual_seed(42)
-data = torch.randn(1000, input_dim)  # Example dataset with 1000 samples
-dataset = TensorDataset(data)
-dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+        if embeddings.shape[1] != input_dim:
+            raise ValueError(f"Embedding dimension {embeddings.shape[1]} does not match input_dim {input_dim}.")
 
-# Initialize model, optimizer
-vae = VariationalAutoencoder(input_dim, latent_dim)
-optimizer = optim.Adam(vae.parameters(), lr=learning_rate)
+        dataset = TensorDataset(embeddings)
+        dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+        return dataloader
+
+    except FileNotFoundError:
+        logging.error(f"File not found: {filename}")
+        raise
+    except Exception as e:
+        logging.error(f"Error during data preparation: {e}")
+        raise
+
+# Model and optimizer initialization
+def initialize_model(input_dim, latent_dim, learning_rate):
+    try:
+        logging.info("Initializing Variational Autoencoder and optimizer.")
+        vae = VariationalAutoencoder(input_dim, latent_dim)
+        optimizer = optim.Adam(vae.parameters(), lr=learning_rate)
+        return vae, optimizer
+    except Exception as e:
+        logging.error(f"Error during model initialization: {e}")
+        raise
 
 # Training loop
-vae.train()
-for epoch in range(epochs):
-    total_loss = 0
-    for batch in dataloader:
-        x = batch[0]
+def train_model(vae, optimizer, dataloader, epochs):
+    try:
+        logging.info("Starting training loop.")
+        vae.train()
+        for epoch in range(epochs):
+            total_loss = 0
+            for batch in dataloader:
+                x = batch[0]
 
-        optimizer.zero_grad()
-        recon_x, mu, logvar = vae(x)
-        loss = vae_loss(recon_x, x, mu, logvar)
-        loss.backward()
-        optimizer.step()
+                optimizer.zero_grad()
+                recon_x, mu, logvar = vae(x)
+                loss = vae_loss(recon_x, x, mu, logvar)
+                loss.backward()
+                optimizer.step()
 
-        total_loss += loss.item()
+                total_loss += loss.item()
 
-    print(f"Epoch {epoch + 1}/{epochs}, Loss: {total_loss:.4f}")
+            logging.info(f"Epoch {epoch + 1}/{epochs}, Loss: {total_loss:.4f}")
+    except Exception as e:
+        logging.error(f"Error during training: {e}")
+        raise
 
 # Save the trained model
-torch.save(vae.state_dict(), "vae_1024_to_512.pth")
+def save_model(vae, model_path):
+    try:
+        logging.info(f"Saving trained model to {model_path}.")
+        torch.save(vae.state_dict(), model_path)
+        logging.info("Model saved successfully.")
+    except Exception as e:
+        logging.error(f"Error during model saving: {e}")
+        raise
+
+if __name__ == "__main__":
+    # Hyperparameters
+    input_dim = 1024
+    latent_dim = 512
+    batch_size = 64
+    learning_rate = 1e-3
+    epochs = 20
+    model_path = "vae_1024_to_512.pth"
+    embedding_file = "./saved_weights/sentence_embeddings.pt"  # Path to the text file containing sentences
+
+    try:
+        dataloader = prepare_data(input_dim, batch_size, embedding_file)
+        vae, optimizer = initialize_model(input_dim, latent_dim, learning_rate)
+        train_model(vae, optimizer, dataloader, epochs)
+        save_model(vae, model_path)
+    except Exception as e:
+        logging.critical(f"Training pipeline failed: {e}")
