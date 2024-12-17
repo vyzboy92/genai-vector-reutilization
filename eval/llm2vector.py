@@ -1,4 +1,5 @@
 import torch
+import torch.nn as nn
 
 # Define the VAE model class (same as above)
 class VariationalAutoencoder(nn.Module):
