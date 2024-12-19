@@ -1,5 +1,3 @@
-# LLM Sentence generation
-
 import base64
 import os
 import re
@@ -57,61 +55,56 @@ def convert_to_base64(pil_image):
         logging.error(f"Error converting image to base64: {e}")
         raise
 
-def process_images(image_folder, output_folder, prompt):
+def process_images(image_folder, output_file, prompt):
     """
     Processes images in a folder, generating captions for each using Ollama.
 
     Args:
         image_folder (str): Path to the folder containing images.
-        output_folder (str): Path to the folder to save the output text files.
+        output_file (str): Path to the file to append the generated captions.
         prompt (str): Prompt for generating captions.
     """
-    if not os.path.exists(output_folder):
-        os.makedirs(output_folder)
-        logging.info(f"Created output folder: {output_folder}")
-
     image_count = 0
 
-    for filename in os.listdir(image_folder):
-        file_path = os.path.join(image_folder, filename)
-        if not os.path.isfile(file_path):
-            logging.warning(f"Skipping non-file item: {file_path}")
-            continue
+    with open(output_file, 'a') as output:
+        for filename in os.listdir(image_folder):
+            file_path = os.path.join(image_folder, filename)
+            if not os.path.isfile(file_path):
+                logging.warning(f"Skipping non-file item: {file_path}")
+                continue
 
-        try:
-            logging.info(f"Processing image: {file_path}")
-            image_b64 = load_image(file_path)
+            try:
+                logging.info(f"Processing image: {file_path}")
+                image_b64 = load_image(file_path)
 
-            # Generate caption using Ollama
-            response = ollama.generate(
-                model='llava',
-                prompt=prompt,
-                images=[image_b64]
-            )
-            captions = re.split(r'(?<=[.!?])\s+', response['response'].strip())
+                # Generate caption using Ollama
+                response = ollama.generate(
+                    model='llava',
+                    prompt=prompt,
+                    images=[image_b64]
+                )
+                captions = re.split(r'(?<=[.!?])\s+', response['response'].strip())
 
-            # Save the captions to a text file
-            output_file_path = os.path.join(output_folder, f"{os.path.splitext(filename)[0]}.txt")
-            with open(output_file_path, 'w') as output_file:
+                # Append the captions to the output file
                 for caption in captions:
-                    output_file.write(caption + '\n')
+                    output.write(caption + '\n')
 
-            logging.info(f"Captions saved for {filename} at {output_file_path}")
+                logging.info(f"Captions appended for {filename}.")
 
-            image_count += 1
-            logging.info(f"Processed {image_count} image(s).")
+                image_count += 1
+                logging.info(f"Processed {image_count} image(s).")
 
-        except Exception as e:
-            logging.error(f"Error processing image {file_path}: {e}")
+            except Exception as e:
+                logging.error(f"Error processing image {file_path}: {e}")
 
 if __name__ == "__main__":
     IMAGE_FOLDER = "./images"
-    OUTPUT_FOLDER = "./output"
+    OUTPUT_FILE = "./output/captions.txt"
     PROMPT = (
         "As a driver driving through Europe, describe the scene and all the objects "
         "you see in the image in one sentence."
     )
 
     logging.info("Starting image processing script.")
-    process_images(IMAGE_FOLDER, OUTPUT_FOLDER, PROMPT)
+    process_images(IMAGE_FOLDER, OUTPUT_FILE, PROMPT)
     logging.info("Image processing completed.")
